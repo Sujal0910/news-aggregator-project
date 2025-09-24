@@ -11,53 +11,52 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 # --- App Configuration ---
 app = Flask(__name__)
-# Get secrets from environment variables
-app.secret_key = os.getenv('FLASK_SECRET_KEY')
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'a-default-secret-key-for-local-dev')
+
+# --- IMPORTANT: Session Cookie Configuration for Production ---
+# These settings are crucial for login to work on a deployed site
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+
+# --- CORS Configuration ---
 FRONTEND_URL = os.getenv('FRONTEND_URL')
+CORS(app, resources={r"/api/*": {"origins": [FRONTEND_URL]}}, supports_credentials=True)
+
 DATABASE_URL = os.getenv('DATABASE_URL')
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 
-# A more robust CORS setup for production
-if FRONTEND_URL:
-    CORS(app, resources={r"/api/*": {"origins": [FRONTEND_URL]}}, supports_credentials=True)
+print(f"--- SERVER STARTING ---")
+print(f"Backend configured to allow requests from: {FRONTEND_URL}")
 
-# --- Database Helper & Automated Setup ---
+# (The rest of the file is exactly the same as the last version)
 
 def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
-    except psycopg2.OperationalError as e:
-        print(f"FATAL: Could not connect to the database: {e}")
-        raise
+    retries = 5
+    while retries > 0:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            return conn
+        except psycopg2.OperationalError as e:
+            print(f"Database connection failed: {e}. Retrying... ({retries-1} left)")
+            retries -= 1
+            time.sleep(5)
+    raise Exception("Could not connect to the database after several retries.")
+
 
 def setup_database():
-    """Checks if the database is initialized. If not, creates tables and fetches news."""
-    print("--- Starting Database Setup Check ---")
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        # Check if the 'users' table exists as a sign of initialization
         cur.execute("SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = 'users');")
         table_exists = cur.fetchone()[0]
-
         if not table_exists:
             print("Database is new. Initializing schema...")
-            with open('schema.sql', 'r') as f:
-                cur.execute(f.read())
+            with open('schema.sql', 'r') as f: cur.execute(f.read())
             conn.commit()
-            print("Tables created successfully.")
-
-            print("Fetching news from NewsAPI...")
+            print("Tables created.")
+            print("Fetching news...")
             categories = ['business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology']
             for category in categories:
-                print(f"Fetching for category: {category}...")
-                if not NEWS_API_KEY:
-                    print("ERROR: NEWS_API_KEY is not set. Skipping news fetch.")
-                    break
-                
                 url = f'https://newsapi.org/v2/top-headlines?country=us&category={category}&apiKey={NEWS_API_KEY}'
                 response = requests.get(url)
                 if response.status_code == 200:
@@ -75,29 +74,25 @@ def setup_database():
                             )
                         )
                     conn.commit()
-                else:
-                    print(f"Failed to fetch news for {category}. Status: {response.status_code}")
             print("News fetching complete.")
         else:
             print("Database already initialized.")
-        
         cur.close()
         conn.close()
-        print("--- Database Setup Check Complete ---")
     except Exception as e:
         print(f"AN ERROR OCCURRED DURING DATABASE SETUP: {e}")
 
-# (The rest of your app.py functions like get_recommendations, register, login, etc. go here)
-# ... The functions are omitted here for brevity but are the same as your local version,
-# ... except they now use psycopg2 with '%s' placeholders instead of sqlite3 with '?'.
 
 def get_recommendations(user_id):
     conn = get_db_connection()
     interactions_df = pd.read_sql_query("SELECT user_id, article_id FROM user_interactions", conn)
-    # ... (rest of function is the same, no changes needed)
-    if interactions_df.empty: conn.close(); return []
+    if interactions_df.empty:
+        conn.close()
+        return []
     user_item_matrix = pd.crosstab(interactions_df['user_id'], interactions_df['article_id'])
-    if user_id not in user_item_matrix.index: conn.close(); return []
+    if user_id not in user_item_matrix.index:
+        conn.close()
+        return []
     user_similarity = cosine_similarity(user_item_matrix)
     user_similarity_df = pd.DataFrame(user_similarity, index=user_item_matrix.index, columns=user_item_matrix.index)
     similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:6]
@@ -110,7 +105,6 @@ def get_recommendations(user_id):
     seen_articles = set(current_user_articles[current_user_articles > 0].index)
     final_recommendations_ids = list(recommended_articles - seen_articles)
     if not final_recommendations_ids:
-        # Fallback logic
         user_clicks_df = interactions_df[interactions_df['user_id'] == user_id]
         if not user_clicks_df.empty:
             clicked_article_ids = tuple(user_clicks_df['article_id'].tolist())
@@ -124,7 +118,9 @@ def get_recommendations(user_id):
                 """
                 fallback_df = pd.read_sql_query(fallback_query, conn, params=(favorite_categories, clicked_article_ids))
                 final_recommendations_ids = fallback_df['id'].tolist()
-    if not final_recommendations_ids: conn.close(); return []
+    if not final_recommendations_ids:
+        conn.close()
+        return []
     placeholders = ','.join(['%s'] * len(final_recommendations_ids))
     query = f"SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE id IN ({placeholders}) ORDER BY published_at DESC LIMIT 5"
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -147,6 +143,7 @@ def register():
         cur.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s)', (username, hashed_password))
         conn.commit()
     except psycopg2.IntegrityError:
+        conn.close()
         return jsonify({"error": "Username already exists"}), 409
     finally:
         cur.close()
@@ -218,6 +215,7 @@ def record_interaction():
             cur.execute('INSERT INTO user_interactions (user_id, article_id, interaction_type) VALUES (%s, %s, %s)', (user_id, article_id, 'click'))
             conn.commit()
     except Exception as e:
+        conn.close()
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -231,7 +229,10 @@ def get_user_recommendations():
     recommendations = get_recommendations(user_id)
     return jsonify(recommendations)
 
-# Run the setup function only when running on Render
-if os.environ.get("RENDER"):
+# Run the setup function when the application starts
+if os.environ.get("RENDER"): # Only run setup on Render
     setup_database()
+
+if __name__ == '__main__':
+    app.run(port=5001, debug=False)
 
