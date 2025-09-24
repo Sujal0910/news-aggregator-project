@@ -1,0 +1,8 @@
+Flask
+Flask-Cors
+gunicorn
+pandas
+psycopg2-binary
+requests
+scikit-learn
+Werkzeug
