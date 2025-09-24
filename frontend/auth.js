@@ -1,4 +1,4 @@
-// The live URL of your backend is now hardcoded here.
+// The live URL of your backend.
 const API_BASE_URL = 'https://news-backend-qgjq.onrender.com';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,19 +24,22 @@ function handleLogin() {
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     const feedback = document.getElementById('feedback');
+    feedback.textContent = 'Logging in...';
+    feedback.className = 'alert alert-info mt-3';
 
     fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        credentials: 'include', // Important for sending/receiving session cookies
+        credentials: 'include',
         body: JSON.stringify({ username, password })
     })
     .then(response => response.json())
     .then(data => {
         if (data.message) {
-            window.location.href = 'index.html'; // Redirect on successful login
+            // This is the line that redirects to the homepage.
+            window.location.href = 'index.html'; 
         } else {
             feedback.textContent = data.error || 'Login failed!';
             feedback.className = 'alert alert-danger mt-3';
@@ -53,13 +56,14 @@ function handleRegister() {
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     const feedback = document.getElementById('feedback');
+    feedback.textContent = 'Registering...';
+    feedback.className = 'alert alert-info mt-3';
 
     fetch(`${API_BASE_URL}/api/register`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        credentials: 'include',
         body: JSON.stringify({ username, password })
     })
     .then(response => response.json())
@@ -67,7 +71,7 @@ function handleRegister() {
         if (data.message) {
             feedback.textContent = 'Registration successful! Redirecting to login...';
             feedback.className = 'alert alert-success mt-3';
-            // After showing the success message, wait 2 seconds then redirect.
+            // Redirect to login page after 2 seconds
             setTimeout(() => {
                 window.location.href = 'login.html';
             }, 2000);
