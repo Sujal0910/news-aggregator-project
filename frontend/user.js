@@ -27,11 +27,13 @@ function updateNavbar(isLoggedIn, username) {
     const welcomeMessage = document.getElementById('welcome-message');
 
     if (isLoggedIn) {
+        // Hide login/register and show logout
         loginLinkContainer.classList.add('d-none');
         registerLinkContainer.classList.add('d-none');
         logoutButtonContainer.classList.remove('d-none');
         welcomeMessage.textContent = `Welcome, ${username}`;
     } else {
+        // Show login/register and hide logout
         loginLinkContainer.classList.remove('d-none');
         registerLinkContainer.classList.remove('d-none');
         logoutButtonContainer.classList.add('d-none');
@@ -45,12 +47,10 @@ function logout() {
         credentials: 'include'
     })
     .then(() => {
-        // Reload the page to reset the state after logout
         window.location.reload();
     })
     .catch(error => {
         console.error('Logout error:', error);
-        // Still try to reload to clear the UI
         window.location.reload();
     });
 }
