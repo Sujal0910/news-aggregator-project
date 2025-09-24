@@ -8,10 +8,20 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
+from datetime import timedelta
 
 # --- App Configuration ---
 app = Flask(__name__)
+# Set a secret key for session management
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'a-default-secret-key-for-local-dev')
+# Configure session cookie for production
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='None',
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7)
+)
+
 
 # --- VERY IMPORTANT: CORS Configuration ---
 FRONTEND_URL = os.getenv('FRONTEND_URL')
@@ -20,7 +30,6 @@ if FRONTEND_URL:
     print(f"--- SERVER STARTING ---")
     print(f"Backend configured to allow requests from: {FRONTEND_URL}")
 else:
-    # Fallback for local development
     CORS(app, supports_credentials=True, origins=['http://localhost:8000', 'http://127.0.0.1:8000'])
     print("--- SERVER STARTING (LOCAL) ---")
 
@@ -87,41 +96,31 @@ def setup_database():
 def get_recommendations(user_id):
     conn = get_db_connection()
     interactions_df = pd.read_sql_query("SELECT user_id, article_id FROM user_interactions", conn)
-    
     final_recommendations_ids = []
-
-    # Try Collaborative Filtering first if there's enough data
     if not interactions_df.empty and interactions_df['user_id'].nunique() > 1:
         user_item_matrix = pd.crosstab(interactions_df['user_id'], interactions_df['article_id'])
         if user_id in user_item_matrix.index:
             user_similarity = cosine_similarity(user_item_matrix)
             user_similarity_df = pd.DataFrame(user_similarity, index=user_item_matrix.index, columns=user_item_matrix.index)
-            
             similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:6]
             recommended_articles = set()
-            
             for similar_user_id, score in similar_users.items():
-                if score > 0: # Only consider users with some similarity
+                if score > 0:
                     similar_user_articles = user_item_matrix.loc[similar_user_id]
                     articles_to_recommend = similar_user_articles[similar_user_articles > 0].index
                     recommended_articles.update(articles_to_recommend)
-            
             current_user_articles = user_item_matrix.loc[user_id]
             seen_articles = set(current_user_articles[current_user_articles > 0].index)
             final_recommendations_ids = list(recommended_articles - seen_articles)
-
-    # Fallback to Content-Based Filtering if collaborative filtering fails or isn't possible
     if not final_recommendations_ids:
         user_clicks_df = interactions_df[interactions_df['user_id'] == user_id]
         if not user_clicks_df.empty:
             clicked_article_ids = tuple(user_clicks_df['article_id'].tolist())
             query = "SELECT DISTINCT category FROM articles WHERE id IN %s"
-            
             cur_fallback = conn.cursor(cursor_factory=RealDictCursor)
             cur_fallback.execute(query, (clicked_article_ids,))
             categories_result = cur_fallback.fetchall()
             cur_fallback.close()
-
             if categories_result:
                 favorite_categories = tuple([row['category'] for row in categories_result])
                 fallback_query = """
@@ -134,19 +133,15 @@ def get_recommendations(user_id):
                 fallback_result = cur_fallback_2.fetchall()
                 cur_fallback_2.close()
                 final_recommendations_ids = [row['id'] for row in fallback_result]
-        
     if not final_recommendations_ids:
         conn.close()
         return []
-
     placeholders = ','.join(['%s'] * len(final_recommendations_ids))
-    # --- CHANGE: Ensure final recommended articles have an image ---
     query = f"""
         SELECT id, title, description, url, image_url, published_at, source, category 
         FROM articles 
         WHERE id IN ({placeholders}) AND image_url IS NOT NULL AND image_url != ''
     """
-    
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query, final_recommendations_ids)
     recommended_articles_details = cur.fetchall()
@@ -183,7 +178,9 @@ def register():
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    # ... (function is unchanged)
+    # --- LOGGING ADDED ---
+    print(f"--- LOGIN ATTEMPT ---")
+    print(f"Session before login: {session}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -202,21 +199,35 @@ def login():
     if user and check_password_hash(user['password_hash'], password):
         session['user_id'] = user['id']
         session['username'] = user['username']
-        session.permanent = True # Make session last longer
+        session.permanent = True
+        # --- LOGGING ADDED ---
+        print(f"Login successful for user: {username}")
+        print(f"Session after login: {session}")
         return jsonify({"message": "Logged in successfully", "username": user['username']})
     
+    print(f"Login failed for username: {username}")
     return jsonify({"error": "Invalid username or password"}), 401
 
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
+    # --- LOGGING ADDED ---
+    print(f"--- LOGOUT ATTEMPT ---")
+    print(f"Session before logout: {session}")
     session.clear()
+    print(f"Session after logout: {session}")
     return jsonify({"message": "Logged out successfully"})
 
 @app.route('/api/is_logged_in', methods=['GET'])
 def is_logged_in():
+    # --- LOGGING ADDED ---
+    print(f"--- CHECKING LOGIN STATUS ---")
+    print(f"Incoming session: {session}")
     if 'user_id' in session:
+        print(f"User IS logged in. User: {session.get('username')}")
         return jsonify({"logged_in": True, "username": session.get('username')})
+    
+    print(f"User is NOT logged in.")
     return jsonify({"logged_in": False})
 
 @app.route('/api/news', methods=['GET'])
@@ -225,25 +236,19 @@ def get_news():
     category = request.args.get('category', '')
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    # --- CHANGE: Added condition to only fetch articles with an image URL ---
     sql_query = "SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE image_url IS NOT NULL AND image_url != ''"
     params = []
-
     if query:
         sql_query += " AND (title LIKE %s OR description LIKE %s)"
         params.extend([f'%{query}%', f'%{query}%'])
-    
     if category:
         sql_query += " AND category = %s"
         params.append(category)
-
     sql_query += " ORDER BY published_at DESC LIMIT 50"
-
     cur.execute(sql_query, params)
     articles = cur.fetchall()
     cur.close()
     conn.close()
-    
     return jsonify(articles)
 
 
