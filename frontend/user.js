@@ -27,15 +27,17 @@ function updateNavbar(isLoggedIn, username) {
     const welcomeMessage = document.getElementById('welcome-message');
 
     if (isLoggedIn) {
-        // Hide login/register and show logout
+        // Hide these when logged in
         loginLinkContainer.classList.add('d-none');
         registerLinkContainer.classList.add('d-none');
+        // Show these when logged in
         logoutButtonContainer.classList.remove('d-none');
         welcomeMessage.textContent = `Welcome, ${username}`;
     } else {
-        // Show login/register and hide logout
+        // Show these when logged out
         loginLinkContainer.classList.remove('d-none');
         registerLinkContainer.classList.remove('d-none');
+        // Hide these when logged out
         logoutButtonContainer.classList.add('d-none');
         welcomeMessage.textContent = '';
     }
@@ -44,13 +46,15 @@ function updateNavbar(isLoggedIn, username) {
 function logout() {
     fetch(`${API_BASE_URL}/api/logout`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include' // Important for the server to know which session to end
     })
     .then(() => {
+        // This is the crucial step: reload the page to reflect the logged-out state.
         window.location.reload();
     })
     .catch(error => {
         console.error('Logout error:', error);
+        // Still reload the page to attempt to fix the UI state
         window.location.reload();
     });
 }
