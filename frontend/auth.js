@@ -1,68 +1,81 @@
-// This line will be replaced by Render's environment variable at build time.
-// For local development, it defaults to your local server.
-const API_BASE_URL = window.VITE_API_BASE_URL || 'http://127.0.0.1:5001';
+// The live URL of your backend is now hardcoded here.
+const API_BASE_URL = 'https://news-backend-qgjq.onrender.com';
 
 document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
-    const messageContainer = document.getElementById('message-container');
-
-    const showMessage = (message, isError = false) => {
-        if (messageContainer) {
-            messageContainer.textContent = message;
-            messageContainer.className = `alert ${isError ? 'alert-danger' : 'alert-success'}`;
-            messageContainer.classList.remove('d-none');
-        }
-    };
 
     if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
+        loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const username = loginForm.username.value;
-            const password = loginForm.password.value;
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password }),
-                    credentials: 'include' // Important for sending/receiving session cookies
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    window.location.href = 'index.html'; // Redirect to main page on successful login
-                } else {
-                    showMessage(data.error || 'Login failed.', true);
-                }
-            } catch (error) {
-                showMessage('An error occurred. Please try again.', true);
-            }
+            handleLogin();
         });
     }
 
     if (registerForm) {
-        registerForm.addEventListener('submit', async (e) => {
+        registerForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const username = registerForm.username.value;
-            const password = registerForm.password.value;
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    showMessage('Registration successful! You can now log in.');
-                    registerForm.reset();
-                } else {
-                    showMessage(data.error || 'Registration failed.', true);
-                }
-            } catch (error) {
-                showMessage('An error occurred. Please try again.', true);
-            }
+            handleRegister();
         });
     }
 });
+
+function handleLogin() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const feedback = document.getElementById('feedback');
+
+    fetch(`${API_BASE_URL}/api/login`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            window.location.href = 'index.html';
+        } else {
+            feedback.textContent = data.error || 'Login failed!';
+            feedback.className = 'alert alert-danger mt-3';
+        }
+    })
+    .catch(error => {
+        console.error('Login error:', error);
+        feedback.textContent = 'An error occurred. Please try again.';
+        feedback.className = 'alert alert-danger mt-3';
+    });
+}
+
+function handleRegister() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const feedback = document.getElementById('feedback');
+
+    fetch(`${API_BASE_URL}/api/register`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            feedback.textContent = 'Registration successful! You can now log in.';
+            feedback.className = 'alert alert-success mt-3';
+            document.getElementById('register-form').reset();
+        } else {
+            feedback.textContent = data.error || 'Registration failed!';
+            feedback.className = 'alert alert-danger mt-3';
+        }
+    })
+    .catch(error => {
+        console.error('Registration error:', error);
+        feedback.textContent = 'An error occurred. Please try again.';
+        feedback.className = 'alert alert-danger mt-3';
+    });
+}
 
