@@ -1,4 +1,4 @@
-// The live URL of your backend is now hardcoded here.
+// The live URL of your backend.
 const API_BASE_URL = 'https://news-backend-qgjq.onrender.com';
 import { fetchRecommendations } from './main.js';
 
@@ -22,18 +22,18 @@ async function checkLoginStatus() {
 
 function updateNavbar(isLoggedIn, username) {
     const loginLinkContainer = document.getElementById('login-link-container');
-    const registerLinkContainer = document.getElementById('register-link-container'); // Get the new container
+    const registerLinkContainer = document.getElementById('register-link-container');
     const logoutButtonContainer = document.getElementById('logout-button-container');
     const welcomeMessage = document.getElementById('welcome-message');
 
     if (isLoggedIn) {
         loginLinkContainer.classList.add('d-none');
-        registerLinkContainer.classList.add('d-none'); // Hide register button
+        registerLinkContainer.classList.add('d-none');
         logoutButtonContainer.classList.remove('d-none');
         welcomeMessage.textContent = `Welcome, ${username}`;
     } else {
         loginLinkContainer.classList.remove('d-none');
-        registerLinkContainer.classList.remove('d-none'); // Show register button
+        registerLinkContainer.classList.remove('d-none');
         logoutButtonContainer.classList.add('d-none');
         welcomeMessage.textContent = '';
     }
@@ -45,10 +45,13 @@ function logout() {
         credentials: 'include'
     })
     .then(() => {
+        // Reload the page to reset the state after logout
         window.location.reload();
     })
     .catch(error => {
         console.error('Logout error:', error);
+        // Still try to reload to clear the UI
+        window.location.reload();
     });
 }
 
