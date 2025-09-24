@@ -117,7 +117,6 @@ def get_recommendations(user_id):
             clicked_article_ids = tuple(user_clicks_df['article_id'].tolist())
             query = "SELECT DISTINCT category FROM articles WHERE id IN %s"
             
-            # Use a new cursor for this operation
             cur_fallback = conn.cursor(cursor_factory=RealDictCursor)
             cur_fallback.execute(query, (clicked_article_ids,))
             categories_result = cur_fallback.fetchall()
@@ -125,10 +124,9 @@ def get_recommendations(user_id):
 
             if categories_result:
                 favorite_categories = tuple([row['category'] for row in categories_result])
-                # --- THIS IS THE KEY CHANGE ---
-                # Order by RANDOM() instead of published_at to give unique recommendations
                 fallback_query = """
                     SELECT id FROM articles WHERE category IN %s AND id NOT IN %s 
+                    AND image_url IS NOT NULL AND image_url != ''
                     ORDER BY RANDOM() LIMIT 5
                 """
                 cur_fallback_2 = conn.cursor(cursor_factory=RealDictCursor)
@@ -142,7 +140,12 @@ def get_recommendations(user_id):
         return []
 
     placeholders = ','.join(['%s'] * len(final_recommendations_ids))
-    query = f"SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE id IN ({placeholders})"
+    # --- CHANGE: Ensure final recommended articles have an image ---
+    query = f"""
+        SELECT id, title, description, url, image_url, published_at, source, category 
+        FROM articles 
+        WHERE id IN ({placeholders}) AND image_url IS NOT NULL AND image_url != ''
+    """
     
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query, final_recommendations_ids)
@@ -154,6 +157,7 @@ def get_recommendations(user_id):
 
 @app.route('/api/register', methods=['POST'])
 def register():
+    # ... (function is unchanged)
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -179,6 +183,7 @@ def register():
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    # ... (function is unchanged)
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -216,24 +221,29 @@ def is_logged_in():
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
-    # ... (function is unchanged)
     query = request.args.get('q', '')
     category = request.args.get('category', '')
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    sql_query = "SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE 1=1"
+    # --- CHANGE: Added condition to only fetch articles with an image URL ---
+    sql_query = "SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE image_url IS NOT NULL AND image_url != ''"
     params = []
+
     if query:
         sql_query += " AND (title LIKE %s OR description LIKE %s)"
         params.extend([f'%{query}%', f'%{query}%'])
+    
     if category:
         sql_query += " AND category = %s"
         params.append(category)
+
     sql_query += " ORDER BY published_at DESC LIMIT 50"
+
     cur.execute(sql_query, params)
     articles = cur.fetchall()
     cur.close()
     conn.close()
+    
     return jsonify(articles)
 
 
@@ -264,7 +274,6 @@ def record_interaction():
 
 @app.route('/api/recommendations', methods=['GET'])
 def get_user_recommendations():
-    # ... (function is unchanged)
     if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
     user_id = session['user_id']
     recommendations = get_recommendations(user_id)
