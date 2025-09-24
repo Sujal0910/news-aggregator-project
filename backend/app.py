@@ -13,19 +13,21 @@ from sklearn.metrics.pairwise import cosine_similarity
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'a-default-secret-key-for-local-dev')
 
-# --- IMPORTANT: Session Cookie Configuration for Production ---
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = True
-
-# --- CORS Configuration ---
+# --- VERY IMPORTANT: CORS Configuration ---
 FRONTEND_URL = os.getenv('FRONTEND_URL')
-CORS(app, resources={r"/api/*": {"origins": [FRONTEND_URL]}}, supports_credentials=True)
+if FRONTEND_URL:
+    CORS(app, resources={r"/api/*": {"origins": [FRONTEND_URL]}}, supports_credentials=True)
+    print(f"--- SERVER STARTING ---")
+    print(f"Backend configured to allow requests from: {FRONTEND_URL}")
+else:
+    # Fallback for local development
+    CORS(app, supports_credentials=True, origins=['http://localhost:8000', 'http://127.0.0.1:8000'])
+    print("--- SERVER STARTING (LOCAL) ---")
+
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 
-print(f"--- SERVER STARTING ---")
-print(f"Backend configured to allow requests from: {FRONTEND_URL}")
 
 def get_db_connection():
     # ... (function is unchanged)
@@ -83,46 +85,65 @@ def setup_database():
 
 
 def get_recommendations(user_id):
-    # ... (function is unchanged)
     conn = get_db_connection()
     interactions_df = pd.read_sql_query("SELECT user_id, article_id FROM user_interactions", conn)
-    if interactions_df.empty:
-        conn.close()
-        return []
-    user_item_matrix = pd.crosstab(interactions_df['user_id'], interactions_df['article_id'])
-    if user_id not in user_item_matrix.index:
-        conn.close()
-        return []
-    user_similarity = cosine_similarity(user_item_matrix)
-    user_similarity_df = pd.DataFrame(user_similarity, index=user_item_matrix.index, columns=user_item_matrix.index)
-    similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:6]
-    recommended_articles = set()
-    for similar_user_id, score in similar_users.items():
-        similar_user_articles = user_item_matrix.loc[similar_user_id]
-        articles_to_recommend = similar_user_articles[similar_user_articles > 0].index
-        recommended_articles.update(articles_to_recommend)
-    current_user_articles = user_item_matrix.loc[user_id]
-    seen_articles = set(current_user_articles[current_user_articles > 0].index)
-    final_recommendations_ids = list(recommended_articles - seen_articles)
+    
+    final_recommendations_ids = []
+
+    # Try Collaborative Filtering first if there's enough data
+    if not interactions_df.empty and interactions_df['user_id'].nunique() > 1:
+        user_item_matrix = pd.crosstab(interactions_df['user_id'], interactions_df['article_id'])
+        if user_id in user_item_matrix.index:
+            user_similarity = cosine_similarity(user_item_matrix)
+            user_similarity_df = pd.DataFrame(user_similarity, index=user_item_matrix.index, columns=user_item_matrix.index)
+            
+            similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:6]
+            recommended_articles = set()
+            
+            for similar_user_id, score in similar_users.items():
+                if score > 0: # Only consider users with some similarity
+                    similar_user_articles = user_item_matrix.loc[similar_user_id]
+                    articles_to_recommend = similar_user_articles[similar_user_articles > 0].index
+                    recommended_articles.update(articles_to_recommend)
+            
+            current_user_articles = user_item_matrix.loc[user_id]
+            seen_articles = set(current_user_articles[current_user_articles > 0].index)
+            final_recommendations_ids = list(recommended_articles - seen_articles)
+
+    # Fallback to Content-Based Filtering if collaborative filtering fails or isn't possible
     if not final_recommendations_ids:
         user_clicks_df = interactions_df[interactions_df['user_id'] == user_id]
         if not user_clicks_df.empty:
             clicked_article_ids = tuple(user_clicks_df['article_id'].tolist())
-            query = f"SELECT DISTINCT category FROM articles WHERE id IN %s"
-            categories_df = pd.read_sql_query(query, conn, params=(clicked_article_ids,))
-            if not categories_df.empty:
-                favorite_categories = tuple(categories_df['category'].tolist())
-                fallback_query = f"""
+            query = "SELECT DISTINCT category FROM articles WHERE id IN %s"
+            
+            # Use a new cursor for this operation
+            cur_fallback = conn.cursor(cursor_factory=RealDictCursor)
+            cur_fallback.execute(query, (clicked_article_ids,))
+            categories_result = cur_fallback.fetchall()
+            cur_fallback.close()
+
+            if categories_result:
+                favorite_categories = tuple([row['category'] for row in categories_result])
+                # --- THIS IS THE KEY CHANGE ---
+                # Order by RANDOM() instead of published_at to give unique recommendations
+                fallback_query = """
                     SELECT id FROM articles WHERE category IN %s AND id NOT IN %s 
-                    ORDER BY published_at DESC LIMIT 5
+                    ORDER BY RANDOM() LIMIT 5
                 """
-                fallback_df = pd.read_sql_query(fallback_query, conn, params=(favorite_categories, clicked_article_ids))
-                final_recommendations_ids = fallback_df['id'].tolist()
+                cur_fallback_2 = conn.cursor(cursor_factory=RealDictCursor)
+                cur_fallback_2.execute(fallback_query, (favorite_categories, clicked_article_ids))
+                fallback_result = cur_fallback_2.fetchall()
+                cur_fallback_2.close()
+                final_recommendations_ids = [row['id'] for row in fallback_result]
+        
     if not final_recommendations_ids:
         conn.close()
         return []
+
     placeholders = ','.join(['%s'] * len(final_recommendations_ids))
-    query = f"SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE id IN ({placeholders}) ORDER BY published_at DESC LIMIT 5"
+    query = f"SELECT id, title, description, url, image_url, published_at, source, category FROM articles WHERE id IN ({placeholders})"
+    
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query, final_recommendations_ids)
     recommended_articles_details = cur.fetchall()
@@ -130,62 +151,57 @@ def get_recommendations(user_id):
     conn.close()
     return recommended_articles_details
 
+
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    if not username or not password:
-        return jsonify({"error": "Username and password are required"}), 400
-    
+    if not username or not password: return jsonify({"error": "Username and password are required"}), 400
     hashed_password = generate_password_hash(password)
-    conn = None # Initialize conn to None
+    conn = get_db_connection()
+    cur = conn.cursor()
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
         cur.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s)', (username, hashed_password))
         conn.commit()
-        cur.close()
     except psycopg2.IntegrityError:
-        # This error occurs if the username is already taken
+        conn.close()
         return jsonify({"error": "Username already exists"}), 409
     except Exception as e:
-        # Log other potential errors to the server console
-        print(f"!!! REGISTRATION ERROR: {e}")
-        return jsonify({"error": "A server error occurred during registration."}), 500
+        conn.rollback()
+        conn.close()
+        return jsonify({"error": f"Database error: {e}"}), 500
     finally:
-        if conn:
-            conn.close()
-    
+        cur.close()
+        conn.close()
     return jsonify({"message": "User created successfully"}), 201
+
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    
+    conn = get_db_connection()
     user = None
-    conn = None
     try:
-        conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute('SELECT * FROM users WHERE username = %s', (username,))
         user = cur.fetchone()
         cur.close()
     except Exception as e:
-        print(f"!!! LOGIN DB ERROR: {e}")
-        return jsonify({"error": "A server error occurred during login."}), 500
+        return jsonify({"error": f"Database error: {e}"}), 500
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
     if user and check_password_hash(user['password_hash'], password):
         session['user_id'] = user['id']
         session['username'] = user['username']
+        session.permanent = True # Make session last longer
         return jsonify({"message": "Logged in successfully", "username": user['username']})
     
     return jsonify({"error": "Invalid username or password"}), 401
+
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -220,6 +236,7 @@ def get_news():
     conn.close()
     return jsonify(articles)
 
+
 @app.route('/api/interactions', methods=['POST'])
 def record_interaction():
     # ... (function is unchanged)
@@ -243,6 +260,7 @@ def record_interaction():
         cur.close()
         conn.close()
     return jsonify({"message": "Interaction recorded"}), 201
+
 
 @app.route('/api/recommendations', methods=['GET'])
 def get_user_recommendations():
