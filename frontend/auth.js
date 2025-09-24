@@ -30,13 +30,13 @@ function handleLogin() {
         headers: {
             'Content-Type': 'application/json'
         },
-        credentials: 'include',
+        credentials: 'include', // Important for sending/receiving session cookies
         body: JSON.stringify({ username, password })
     })
     .then(response => response.json())
     .then(data => {
         if (data.message) {
-            window.location.href = 'index.html';
+            window.location.href = 'index.html'; // Redirect on successful login
         } else {
             feedback.textContent = data.error || 'Login failed!';
             feedback.className = 'alert alert-danger mt-3';
@@ -59,14 +59,18 @@ function handleRegister() {
         headers: {
             'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ username, password })
     })
     .then(response => response.json())
     .then(data => {
         if (data.message) {
-            feedback.textContent = 'Registration successful! You can now log in.';
+            feedback.textContent = 'Registration successful! Redirecting to login...';
             feedback.className = 'alert alert-success mt-3';
-            document.getElementById('register-form').reset();
+            // After showing the success message, wait 2 seconds then redirect.
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
         } else {
             feedback.textContent = data.error || 'Registration failed!';
             feedback.className = 'alert alert-danger mt-3';
