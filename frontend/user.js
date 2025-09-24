@@ -22,15 +22,18 @@ async function checkLoginStatus() {
 
 function updateNavbar(isLoggedIn, username) {
     const loginLinkContainer = document.getElementById('login-link-container');
+    const registerLinkContainer = document.getElementById('register-link-container'); // Get the new container
     const logoutButtonContainer = document.getElementById('logout-button-container');
     const welcomeMessage = document.getElementById('welcome-message');
 
     if (isLoggedIn) {
         loginLinkContainer.classList.add('d-none');
+        registerLinkContainer.classList.add('d-none'); // Hide register button
         logoutButtonContainer.classList.remove('d-none');
         welcomeMessage.textContent = `Welcome, ${username}`;
     } else {
         loginLinkContainer.classList.remove('d-none');
+        registerLinkContainer.classList.remove('d-none'); // Show register button
         logoutButtonContainer.classList.add('d-none');
         welcomeMessage.textContent = '';
     }

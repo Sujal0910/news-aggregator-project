@@ -14,7 +14,6 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'a-default-secret-key-for-local-dev')
 
 # --- IMPORTANT: Session Cookie Configuration for Production ---
-# These settings are crucial for login to work on a deployed site
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 
@@ -28,9 +27,8 @@ NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 print(f"--- SERVER STARTING ---")
 print(f"Backend configured to allow requests from: {FRONTEND_URL}")
 
-# (The rest of the file is exactly the same as the last version)
-
 def get_db_connection():
+    # ... (function is unchanged)
     retries = 5
     while retries > 0:
         try:
@@ -44,6 +42,7 @@ def get_db_connection():
 
 
 def setup_database():
+    # ... (function is unchanged)
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -84,6 +83,7 @@ def setup_database():
 
 
 def get_recommendations(user_id):
+    # ... (function is unchanged)
     conn = get_db_connection()
     interactions_df = pd.read_sql_query("SELECT user_id, article_id FROM user_interactions", conn)
     if interactions_df.empty:
@@ -135,19 +135,28 @@ def register():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    if not username or not password: return jsonify({"error": "Username and password are required"}), 400
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+    
     hashed_password = generate_password_hash(password)
-    conn = get_db_connection()
-    cur = conn.cursor()
+    conn = None # Initialize conn to None
     try:
+        conn = get_db_connection()
+        cur = conn.cursor()
         cur.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s)', (username, hashed_password))
         conn.commit()
-    except psycopg2.IntegrityError:
-        conn.close()
-        return jsonify({"error": "Username already exists"}), 409
-    finally:
         cur.close()
-        conn.close()
+    except psycopg2.IntegrityError:
+        # This error occurs if the username is already taken
+        return jsonify({"error": "Username already exists"}), 409
+    except Exception as e:
+        # Log other potential errors to the server console
+        print(f"!!! REGISTRATION ERROR: {e}")
+        return jsonify({"error": "A server error occurred during registration."}), 500
+    finally:
+        if conn:
+            conn.close()
+    
     return jsonify({"message": "User created successfully"}), 201
 
 @app.route('/api/login', methods=['POST'])
@@ -155,16 +164,27 @@ def login():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT * FROM users WHERE username = %s', (username,))
-    user = cur.fetchone()
-    cur.close()
-    conn.close()
+    
+    user = None
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT * FROM users WHERE username = %s', (username,))
+        user = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        print(f"!!! LOGIN DB ERROR: {e}")
+        return jsonify({"error": "A server error occurred during login."}), 500
+    finally:
+        if conn:
+            conn.close()
+
     if user and check_password_hash(user['password_hash'], password):
         session['user_id'] = user['id']
         session['username'] = user['username']
         return jsonify({"message": "Logged in successfully", "username": user['username']})
+    
     return jsonify({"error": "Invalid username or password"}), 401
 
 @app.route('/api/logout', methods=['POST'])
@@ -180,6 +200,7 @@ def is_logged_in():
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
+    # ... (function is unchanged)
     query = request.args.get('q', '')
     category = request.args.get('category', '')
     conn = get_db_connection()
@@ -201,6 +222,7 @@ def get_news():
 
 @app.route('/api/interactions', methods=['POST'])
 def record_interaction():
+    # ... (function is unchanged)
     if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
     user_id = session['user_id']
     data = request.get_json()
@@ -224,6 +246,7 @@ def record_interaction():
 
 @app.route('/api/recommendations', methods=['GET'])
 def get_user_recommendations():
+    # ... (function is unchanged)
     if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
     user_id = session['user_id']
     recommendations = get_recommendations(user_id)
