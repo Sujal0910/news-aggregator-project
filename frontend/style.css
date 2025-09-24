@@ -1,72 +1,180 @@
-/* General Body Styles */
+/* --- GOOGLE FONT --- */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+/* --- CSS VARIABLES FOR THEME --- */
+:root {
+    --bg-color-light: #f8f9fa;
+    --text-color-light: #212529;
+    --card-bg-light: #ffffff;
+    --border-color-light: #dee2e6;
+    --navbar-bg-light: #ffffff;
+    --link-color-light: #0d6efd;
+    --muted-color-light: #6c757d;
+
+    --bg-color-dark: #121212;
+    --text-color-dark: #e0e0e0;
+    --card-bg-dark: #1e1e1e;
+    --border-color-dark: #444;
+    --navbar-bg-dark: #1e1e1e;
+    --link-color-dark: #58a6ff;
+    --muted-color-dark: #8b949e;
+}
+
 body {
-    font-family: 'Inter', sans-serif;
-    background-color: #f4f7f6; /* A slightly off-white background */
+    font-family: 'Poppins', sans-serif;
+    transition: background-color 0.3s, color 0.3s;
 }
 
-/* Card styling for news articles */
-.news-card {
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    height: 100%; /* Ensure cards in a row are the same height */
-    display: flex;
-    flex-direction: column;
-    border: none; /* Remove default card border */
-    border-radius: 0.75rem; /* More rounded corners */
+/* --- LIGHT MODE (DEFAULT) --- */
+body {
+    background-color: var(--bg-color-light);
+    color: var(--text-color-light);
 }
-
-.news-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12); /* A softer, larger shadow on hover */
+.navbar {
+    background-color: var(--navbar-bg-light) !important;
+    border-bottom: 1px solid var(--border-color-light);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
 }
-
-.news-card .card-img-top {
-    width: 100%;
-    height: 200px;
-    object-fit: cover; /* Ensures image covers the area without distortion */
-    border-top-left-radius: 0.75rem;
-    border-top-right-radius: 0.75rem;
+.navbar-brand, .nav-link {
+    color: var(--text-color-light) !important;
+    font-weight: 500;
 }
-
-.news-card .card-body {
-    flex-grow: 1; /* Allows body to fill available space */
-    display: flex;
-    flex-direction: column;
-    padding: 1.25rem;
-}
-
-.news-card .card-title {
-    font-size: 1.15rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-}
-
-.news-card .card-text {
-    flex-grow: 1; /* Pushes the footer down */
-    font-size: 0.95rem;
-    color: #555;
-    line-height: 1.6;
-}
-
-.news-card .card-footer {
-    background-color: transparent; /* Cleaner look */
-    border-top: 1px solid #eee;
-    font-size: 0.8rem;
-    color: #6c757d;
-    padding: 0.75rem 1.25rem;
-}
-
-/* Navbar styling */
-.navbar-brand {
-    font-weight: bold;
-}
-
 .category-filter.active {
-    font-weight: bold;
-    color: #fff !important; /* Make sure active link is white */
+    color: var(--link-color-light) !important;
+    font-weight: 600;
+    border-bottom: 2px solid var(--link-color-light);
+}
+.card {
+    background-color: var(--card-bg-light);
+    border: 1px solid var(--border-color-light);
+    color: var(--text-color-light);
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+.card-footer {
+    background-color: transparent;
+    border-top: 1px solid var(--border-color-light);
+    color: var(--muted-color-light);
 }
 
-/* Auth pages styling (login/register) */
-.vh-100 {
-    min-height: 100vh;
+/* --- DARK MODE --- */
+body.dark-mode {
+    background-color: var(--bg-color-dark);
+    color: var(--text-color-dark);
+}
+body.dark-mode .navbar {
+    background-color: var(--navbar-bg-dark) !important;
+    border-bottom: 1px solid var(--border-color-dark);
+}
+body.dark-mode .navbar-brand,
+body.dark-mode .nav-link {
+    color: var(--text-color-dark) !important;
+}
+body.dark-mode .category-filter.active {
+     color: var(--link-color-dark) !important;
+     border-bottom: 2px solid var(--link-color-dark);
+}
+body.dark-mode .form-control {
+    background-color: #2c2c2c;
+    color: var(--text-color-dark);
+    border-color: var(--border-color-dark);
+}
+body.dark-mode .form-control::placeholder {
+    color: var(--muted-color-dark);
+}
+body.dark-mode .card {
+    background-color: var(--card-bg-dark);
+    border: 1px solid var(--border-color-dark);
+    color: var(--text-color-dark);
+}
+body.dark-mode .card:hover {
+     box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+body.dark-mode .card-footer {
+    border-top: 1px solid var(--border-color-dark);
+    color: var(--muted-color-dark);
+}
+
+/* --- DARK MODE TOGGLE --- */
+#theme-toggle {
+    cursor: pointer;
+    font-size: 1.25rem;
+    background: none;
+    border: none;
+    color: var(--text-color-light);
+}
+body.dark-mode #theme-toggle {
+    color: var(--text-color-dark);
+}
+#theme-toggle .bi-sun-fill { display: none; }
+#theme-toggle .bi-moon-fill { display: block; }
+body.dark-mode #theme-toggle .bi-sun-fill { display: block; }
+body.dark-mode #theme-toggle .bi-moon-fill { display: none; }
+
+
+/* --- SKELETON LOADER --- */
+.skeleton-card {
+    background-color: #e0e0e0;
+    border-radius: 0.375rem;
+    overflow: hidden;
+}
+body.dark-mode .skeleton-card {
+     background-color: var(--card-bg-dark);
+}
+.skeleton-card .img-placeholder,
+.skeleton-card .text-placeholder {
+    background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+body.dark-mode .skeleton-card .img-placeholder,
+body.dark-mode .skeleton-card .text-placeholder {
+    background: linear-gradient(90deg, #2c2c2c 25%, #3c3c3c 50%, #2c2c2c 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+.skeleton-card .img-placeholder {
+    height: 200px;
+}
+.skeleton-card .text-placeholder {
+    height: 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.25rem;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* --- SCROLL TO TOP BUTTON --- */
+#scroll-to-top {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--link-color-light);
+    color: white;
+    border: none;
+    font-size: 1.2rem;
+    z-index: 1000;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+body.dark-mode #scroll-to-top {
+     background-color: var(--link-color-dark);
+}
+
+/* --- FOOTER --- */
+footer {
+    border-top: 1px solid var(--border-color-light);
+}
+body.dark-mode footer {
+     border-top: 1px solid var(--border-color-dark);
 }
 
